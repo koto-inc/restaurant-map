@@ -37,9 +37,7 @@
   .card img{width:64px;height:64px;border-radius:8px;object-fit:cover;background:#222;flex:none}
   .card .nm{font-size:13.5px;font-weight:700;line-height:1.3}
   .card .meta{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.4}
-  .badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:6px;margin-left:6px;vertical-align:middle}
-  .b-sure{background:#16361f;color:#5ee08a;border:1px solid #2a5e3c}
-  .b-guess{background:#3a3413;color:#f2cf57;border:1px solid #6b5e1f}
+  .rating{display:inline-block;font-size:11.5px;color:#f2c14e;font-weight:700;vertical-align:middle}
   .catpill{display:inline-block;font-size:10.5px;padding:1px 7px;border-radius:999px;color:#111;font-weight:700}
   #listToggle{position:absolute;top:10px;left:10px;z-index:810;background:#fff;color:#111;border:none;border-radius:8px;padding:8px 11px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.4)}
   /* popup */
@@ -51,6 +49,8 @@
   .pop a.btn{flex:1;text-align:center;text-decoration:none;font-size:12px;font-weight:700;padding:8px;border-radius:8px}
   .pop a.tt{background:#111;color:#fff}
   .pop a.gm{background:#1a73e8;color:#fff}
+  .pop a.tb{background:#e8732e;color:#fff}
+  .pop .rating{font-size:12px;color:#d98a00}
   .leaflet-popup-content-wrapper{border-radius:12px}
   .marker-pin{width:24px;height:24px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)}
   footer{font-size:11px;color:var(--muted);text-align:center;padding:6px;background:#0c0e12;border-top:1px solid var(--line)}
@@ -68,7 +68,6 @@
     <div class="controls">
       <input id="search" type="search" placeholder="店名・駅・エリアで検索…" autocomplete="off" />
       <div class="chips" id="cats"></div>
-      <label class="chip small" id="sureToggle" aria-pressed="false"><input type="checkbox" id="sureChk" style="display:none">✅ 確実のみ</label>
     </div>
   </header>
   <div id="main">
@@ -86,26 +85,29 @@ const CAT_COLORS = {
   "ラーメン":"#e3b341","イタリアン":"#3fb950","フレンチ":"#4a9eff","中華":"#f778ba",
   "韓国料理":"#a371f7","カフェ・スイーツ":"#ff8fc7","その他":"#8b949e"
 };
-const state = { q:"", cats:new Set(), sureOnly:false, items:[] };
+const state = { q:"", cats:new Set(), items:[] };
 let map, listEl, countEl;
 
 function catColor(c){ return CAT_COLORS[c] || CAT_COLORS["その他"]; }
 function esc(s){ return (s||"").replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[m])); }
 
+function hasRating(r){ return r.tabelog!=null && r.tabelog!=="" && !isNaN(r.tabelog); }
 function popupHTML(r){
-  const badge = r.confidence==="確実"
-    ? '<span class="badge b-sure">✅ 確実</span>'
-    : '<span class="badge b-guess">⚠️ 推定</span>';
+  const rating = hasRating(r) ? `<span class="rating">⭐ ${r.tabelog}</span>` : "";
+  const tb = r.tabelogUrl
+    ? `<a class="btn tb" href="${r.tabelogUrl}" target="_blank" rel="noopener">食べログ${hasRating(r)?(" "+r.tabelog):""}</a>`
+    : "";
   return `<div class="pop">
     <img src="${r.thumb}" loading="lazy" alt="${esc(r.name)}" onerror="this.style.display='none'">
-    <div class="pn">${esc(r.name)}${badge}</div>
+    <div class="pn">${esc(r.name)}</div>
     <div class="pm">
-      <span class="catpill" style="background:${catColor(r.category)}">${esc(r.category)}</span><br>
+      <span class="catpill" style="background:${catColor(r.category)}">${esc(r.category)}</span> ${rating}<br>
       🚃 ${esc(r.station)}<br>📍 ${esc(r.address)}
     </div>
     <div class="links">
       <a class="btn tt" href="${r.video}" target="_blank" rel="noopener">▶ 動画</a>
-      <a class="btn gm" href="${r.gmap}" target="_blank" rel="noopener">Googleマップ</a>
+      <a class="btn gm" href="${r.gmap}" target="_blank" rel="noopener">地図</a>
+      ${tb}
     </div>
   </div>`;
 }
@@ -121,7 +123,6 @@ function makeMarker(r){
 }
 
 function visible(r){
-  if(state.sureOnly && r.confidence!=="確実") return false;
   if(state.cats.size && !state.cats.has(r.category)) return false;
   if(state.q){
     const hay = (r.name+" "+r.station+" "+r.address+" "+r.category).toLowerCase();
@@ -141,11 +142,11 @@ function render(){
   // list
   listEl.innerHTML = state.items.filter(it=>visible(it.r)).map(it=>{
     const r=it.r;
-    const badge = r.confidence==="確実"?'<span class="badge b-sure">確実</span>':'<span class="badge b-guess">推定</span>';
+    const rate = hasRating(r) ? ` <span class="rating">⭐${r.tabelog}</span>` : "";
     return `<div class="card" data-slug="${r.slug}">
       <img src="${r.thumb}" loading="lazy" alt="" onerror="this.style.visibility='hidden'">
-      <div><div class="nm">${esc(r.name)}${badge}</div>
-      <div class="meta"><span class="catpill" style="background:${catColor(r.category)}">${esc(r.category)}</span> ・ 🚃${esc(r.station)}</div></div>
+      <div><div class="nm">${esc(r.name)}</div>
+      <div class="meta"><span class="catpill" style="background:${catColor(r.category)}">${esc(r.category)}</span>${rate} ・ 🚃${esc(r.station)}</div></div>
     </div>`;
   }).join("") || `<div style="padding:18px;color:var(--muted);font-size:13px">該当なし</div>`;
 }
@@ -169,21 +170,29 @@ function buildCatChips(){
 // 下の FALLBACK_DATA（最後にビルドした時点のスナップショット）で表示する。
 const FALLBACK_DATA = {
   "title": "東京グルメショート動画マップ",
-  "updated": "2026-06-25",
+  "updated": "2026-06-27",
   "restaurants": [
-    { "slug": "oyadoriya", "name": "炭火酒場 おやどりや", "category": "焼き鳥・居酒屋", "station": "中野駅 徒歩3分", "address": "東京都中野区中野5-60-13 KMビル2F", "lat": 35.7074777, "lng": 139.6662988, "confidence": "確実", "author": "気ままに東京グルメ", "video": "https://www.tiktok.com/@tokyo.gourmet/video/7640777212161019143", "gmap": "https://www.google.com/maps/search/?api=1&query=%E7%82%AD%E7%81%AB%E9%85%92%E5%A0%B4%E3%81%8A%E3%82%84%E3%81%A9%E3%82%8A%E3%82%84%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E4%B8%AD%E9%87%8E%E5%8C%BA%E4%B8%AD%E9%87%8E5-60-13", "thumb": "thumbnails/oyadoriya.jpg" },
-    { "slug": "okdongsik", "name": "オクドンシク（옥동식）", "category": "韓国料理", "station": "東新宿駅 徒歩3分", "address": "東京都新宿区大久保2-6-10 新宿第二アルプスマンション B1", "lat": 35.6978967, "lng": 139.7075443, "confidence": "推定", "author": "新宿グルメ", "video": "https://vt.tiktok.com/ZSQrn2aJY/", "gmap": "https://www.google.com/maps/search/?api=1&query=%E3%82%AA%E3%82%AF%E3%83%89%E3%83%B3%E3%82%B7%E3%82%AF%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%96%B0%E5%AE%BF%E5%8C%BA%E5%A4%A7%E4%B9%85%E4%BF%9D2-6-10", "thumb": "thumbnails/okdongsik.jpg" },
-    { "slug": "onegarden", "name": "ワンガーデン 西麻布店", "category": "和食", "station": "六本木駅 徒歩12分", "address": "東京都港区西麻布（番地は要確認）", "lat": 35.6600266, "lng": 139.7238075, "confidence": "推定", "author": "くろ | 東京ディナー", "video": "https://www.tiktok.com/@gurume.kuro/video/7646746320618802450", "gmap": "https://www.google.com/maps/search/?api=1&query=%E3%83%AF%E3%83%B3%E3%82%AC%E3%83%BC%E3%83%87%E3%83%B3%20%E8%A5%BF%E9%BA%BB%E5%B8%83", "thumb": "thumbnails/onegarden.jpg" },
-    { "slug": "nicochelsea", "name": "Nico Chelsea（古民家ビストロ）", "category": "フレンチ", "station": "神楽坂", "address": "東京都新宿区神楽坂（番地は要確認）", "lat": 35.7039203, "lng": 139.7342275, "confidence": "推定", "author": "もう。ええて。【グルメ】", "video": "https://www.tiktok.com/@mo_e_te_gourmet/video/7627055426722401556", "gmap": "https://www.google.com/maps/search/?api=1&query=Nico%20Chelsea%20%E7%A5%9E%E6%A5%BD%E5%9D%82", "thumb": "thumbnails/nicochelsea.jpg" },
-    { "slug": "tenshige", "name": "天茂（てんしげ）", "category": "和食", "station": "赤坂駅 徒歩1分", "address": "東京都港区赤坂3-12-10 赤坂サンビル6F", "lat": 35.674468, "lng": 139.741328, "confidence": "推定", "author": "東京感動グルメ", "video": "https://www.tiktok.com/@_umaimon_gourmet/video/7644215924530187527", "gmap": "https://www.google.com/maps/search/?api=1&query=%E5%A4%A9%E8%8C%82%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%B8%AF%E5%8C%BA%E8%B5%A4%E5%9D%823-12-10", "thumb": "thumbnails/tenshige.jpg" },
-    { "slug": "sakura", "name": "神田つり食堂 サクラ", "category": "和食", "station": "JR神田駅（南口）徒歩3〜4分", "address": "東京都千代田区鍛冶町1-8-1 神田サクラビル 1F", "lat": 35.6944731, "lng": 139.7706981, "confidence": "確実", "author": "Rio", "video": "https://www.tiktok.com/@riochi_odekake/video/7640839049015545095", "gmap": "https://www.google.com/maps/search/?api=1&query=%E7%A5%9E%E7%94%B0%E3%81%A4%E3%82%8A%E9%A3%9F%E5%A0%82%E3%82%B5%E3%82%AF%E3%83%A9%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E5%8D%83%E4%BB%A3%E7%94%B0%E5%8C%BA%E9%8D%9B%E5%86%B6%E7%94%BA1-8-1", "thumb": "thumbnails/sakura.jpg" },
-    { "slug": "okonn", "name": "おこん（代々木上原）", "category": "和食", "station": "代々木上原駅 徒歩7分", "address": "東京都渋谷区西原2-48-2", "lat": 35.6684101, "lng": 139.6777618, "confidence": "推定", "author": "コネクト東京グルメ", "video": "https://www.tiktok.com/@connect_tokyodate/video/7644774786446642439", "gmap": "https://www.google.com/maps/search/?api=1&query=%E3%81%8A%E3%81%93%E3%82%93%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%B8%8B%E8%B0%B7%E5%8C%BA%E8%A5%BF%E5%8E%9F2-48-2", "thumb": "thumbnails/okonn.jpg" },
-    { "slug": "ramenafrobeats", "name": "Ramen Afro Beats", "category": "ラーメン", "station": "新宿駅（詳細は要確認）", "address": "東京都新宿区（番地は要確認）", "lat": 35.6888842, "lng": 139.6987233, "confidence": "推定", "author": "ぼっちのアラレちゃん", "video": "https://vt.tiktok.com/ZSQTuoQtN/", "gmap": "https://www.google.com/maps/search/?api=1&query=Ramen%20Afro%20Beats%20%E6%96%B0%E5%AE%BF", "thumb": "thumbnails/ramenafrobeats.jpg" },
-    { "slug": "nikudarake", "name": "焼肉 にくだらけ（西麻布）", "category": "焼肉", "station": "六本木駅 徒歩10分", "address": "東京都港区西麻布1-12-5 SW六本木通ビル 2F", "lat": 35.663315, "lng": 139.7327813, "confidence": "推定", "author": "コアラ東京オシャレグルメ", "video": "https://www.tiktok.com/@koala_tokyo_gourmet/video/7626725232673328391", "gmap": "https://www.google.com/maps/search/?api=1&query=%E7%84%BC%E8%82%89%E3%81%AB%E3%81%8F%E3%81%A0%E3%82%89%E3%81%91%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%B8%AF%E5%8C%BA%E8%A5%BF%E9%BA%BB%E5%B8%831-12-5", "thumb": "thumbnails/nikudarake.jpg" },
-    { "slug": "naraseimen", "name": "楢製麺（うどん専門・代々木）", "category": "ラーメン", "station": "南新宿駅 徒歩3分／代々木駅 徒歩4分", "address": "東京都渋谷区代々木2-26-2", "lat": 35.6839957, "lng": 139.7016776, "confidence": "推定", "author": "きよまるグルメ【東京版】", "video": "https://www.tiktok.com/@tokyo.kiyomaru/video/7629991829290732807", "gmap": "https://www.google.com/maps/search/?api=1&query=%E6%A5%A2%E8%A3%BD%E9%BA%BA%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%B8%8B%E8%B0%B7%E5%8C%BA%E4%BB%A3%E3%80%85%E6%9C%A82-26-2", "thumb": "thumbnails/naraseimen.jpg" },
-    { "slug": "kagurazaka-tora", "name": "神楽坂 焼鳥 虎", "category": "焼き鳥・居酒屋", "station": "神楽坂駅（徒歩分は要確認）", "address": "東京都新宿区神楽坂2-11 AYビル1F", "lat": 35.7039203, "lng": 139.7342275, "confidence": "推定", "author": "東京グルメ", "video": "https://www.tiktok.com/@tokyo_foods/video/7653815587751103765", "gmap": "https://www.google.com/maps/search/?api=1&query=%E7%A5%9E%E6%A5%BD%E5%9D%82%20%E7%84%BC%E9%B3%A5%20%E8%99%8E%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%96%B0%E5%AE%BF%E5%8C%BA%E7%A5%9E%E6%A5%BD%E5%9D%822-11", "thumb": "thumbnails/kagurazaka-tora.jpg" },
-    { "slug": "matte", "name": "MATTE Bottega del Cioccolato（麻布台ヒルズ）", "category": "カフェ・スイーツ", "station": "神谷町駅 直結", "address": "東京都港区麻布台1-2-4 麻布台ヒルズ ガーデンプラザC B1F", "lat": 35.6614747, "lng": 139.7408267, "confidence": "確実", "author": "あかねちゃんねる⋆東京おしゃれグルメ⋆", "video": "https://www.tiktok.com/@akane0726/video/7588128443984841991", "gmap": "https://www.google.com/maps/search/?api=1&query=MATTE%20Bottega%20del%20Cioccolato%20%E9%BA%BB%E5%B8%83%E5%8F%B0%E3%83%92%E3%83%AB%E3%82%BA", "thumb": "thumbnails/matte.jpg" },
-    { "slug": "yamamoto", "name": "手巻き YAMAMOTO（山本海苔店 新本店内）", "category": "寿司", "station": "三越前駅 B6出口 徒歩1分", "address": "東京都中央区日本橋室町1-8-3 室町NSビル1F", "lat": 35.6851257, "lng": 139.7711284, "confidence": "推定", "author": "東京グルメ", "video": "https://www.tiktok.com/@tokyo_foods/video/7570668239370390804", "gmap": "https://www.google.com/maps/search/?api=1&query=%E6%89%8B%E5%B7%BB%E3%81%8DYAMAMOTO%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E4%B8%AD%E5%A4%AE%E5%8C%BA%E6%97%A5%E6%9C%AC%E6%A9%8B%E5%AE%A4%E7%94%BA1-8-3", "thumb": "thumbnails/yamamoto.jpg" }
+    { "slug": "387cec7759068181b9cfeb8f585e4d2c", "name": "神楽坂 焼鳥 虎", "category": "焼き鳥・居酒屋", "station": "神楽坂駅（徒歩分は要確認）", "address": "東京都新宿区神楽坂2-11 AYビル1F", "lat": 35.7039203, "lng": 139.7342275, "author": "東京グルメ", "video": "https://vt.tiktok.com/ZSQodtSK9/", "gmap": "https://www.google.com/maps/search/?api=1&query=%E7%A5%9E%E6%A5%BD%E5%9D%82%20%E7%84%BC%E9%B3%A5%20%E8%99%8E%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%96%B0%E5%AE%BF%E5%8C%BA%E7%A5%9E%E6%A5%BD%E5%9D%822-11", "tabelog": null, "tabelogUrl": "https://tabelog.com/tokyo/A1309/A130905/13322554/", "thumb": "thumbnails/387cec7759068181b9cfeb8f585e4d2c.jpg" },
+    { "slug": "389cec775906810a8011e3edede0eb47", "name": "アメリカン（銀座）", "category": "カフェ・スイーツ", "station": "東銀座駅 徒歩3分", "address": "東京都中央区銀座4-11-7", "lat": 35.67117, "lng": 139.766249, "author": "aku〈東京カフェ&グルメ〉", "video": "https://vt.tiktok.com/ZSCLjTMR9/", "gmap": "https://www.google.com/maps/search/?api=1&query=%E3%82%A2%E3%83%A1%E3%83%AA%E3%82%AB%E3%83%B3%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E4%B8%AD%E5%A4%AE%E5%8C%BA%E9%8A%80%E5%BA%A74-11-7", "tabelog": null, "tabelogUrl": "", "thumb": "thumbnails/389cec775906810a8011e3edede0eb47.jpg" },
+    { "slug": "389cec775906819b8861cb3aaba02a81", "name": "王ろじ", "category": "和食", "station": "新宿三丁目駅 徒歩2分", "address": "東京都新宿区新宿3-17-21", "lat": 35.691905, "lng": 139.7035282, "author": "俺の東京グルメ/はやさん", "video": "https://vt.tiktok.com/ZSCLs31Hp/", "gmap": "https://www.google.com/maps/search/?api=1&query=%E7%8E%8B%E3%82%8D%E3%81%98%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%96%B0%E5%AE%BF%E5%8C%BA%E6%96%B0%E5%AE%BF3-17-21", "tabelog": null, "tabelogUrl": "", "thumb": "thumbnails/389cec775906819b8861cb3aaba02a81.jpg" },
+    { "slug": "385cec77590681fbb8baf4fa71f2b1b4", "name": "天茂（てんしげ）", "category": "和食", "station": "赤坂駅 徒歩1分", "address": "東京都港区赤坂3-12-10 赤坂サンビル6F", "lat": 35.674468, "lng": 139.741328, "author": "東京感動グルメ", "video": "https://www.tiktok.com/@_umaimon_gourmet/video/7644215924530187527", "gmap": "https://www.google.com/maps/search/?api=1&query=%E5%A4%A9%E8%8C%82%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%B8%AF%E5%8C%BA%E8%B5%A4%E5%9D%823-12-10", "tabelog": 3.57, "tabelogUrl": "https://tabelog.com/tokyo/A1308/A130801/13002795/", "thumb": "thumbnails/385cec77590681fbb8baf4fa71f2b1b4.jpg" },
+    { "slug": "385cec77590681a1b552e40a643358b9", "name": "おこん（代々木上原）", "category": "和食", "station": "代々木上原駅 徒歩7分", "address": "東京都渋谷区西原2-48-2", "lat": 35.6684101, "lng": 139.6777618, "author": "コネクト東京グルメ", "video": "https://www.tiktok.com/@connect_tokyodate/video/7644774786446642439", "gmap": "https://www.google.com/maps/search/?api=1&query=%E3%81%8A%E3%81%93%E3%82%93%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%B8%8B%E8%B0%B7%E5%8C%BA%E8%A5%BF%E5%8E%9F2-48-2", "tabelog": 3.45, "tabelogUrl": "https://tabelog.com/tokyo/A1318/A131811/13054942/", "thumb": "thumbnails/385cec77590681a1b552e40a643358b9.jpg" },
+    { "slug": "386cec775906818cab85d2427a77e2bd", "name": "楽製麺（うどん専門・代々木）", "category": "ラーメン", "station": "南新宿駅 徒歩3分／代々木駅 徒歩4分", "address": "東京都渋谷区代々木2-26-2", "lat": 35.6839957, "lng": 139.7016776, "author": "きよまるグルメ【東京版】", "video": "https://vt.tiktok.com/ZSQEDVrbB/", "gmap": "https://www.google.com/maps/search/?api=1&query=%E6%A5%A2%E8%A3%BD%E9%BA%BA%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%B8%8B%E8%B0%B7%E5%8C%BA%E4%BB%A3%E3%80%85%E6%9C%A82-26-2", "tabelog": 3.65, "tabelogUrl": "https://tabelog.com/tokyo/A1304/A130401/13234984/", "thumb": "thumbnails/386cec775906818cab85d2427a77e2bd.jpg" },
+    { "slug": "389cec77590681c7a7a9d8695525ccbe", "name": "namida（ナミダ）", "category": "和食", "station": "池尻大橋駅 南口 徒歩約10分", "address": "東京都世田谷区池尻2-4-5 HOME/WORK VILLAGE 1F 108", "lat": 35.6474955, "lng": 139.6818429, "author": "東京女子グルメ👠", "video": "https://vt.tiktok.com/ZSCLrfHko/", "gmap": "https://www.google.com/maps/search/?api=1&query=namida%20%E6%97%A5%E6%9C%AC%E6%96%99%E7%90%86%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E4%B8%96%E7%94%B0%E8%B0%B7%E5%8C%BA%E6%B1%A0%E5%B0%BB2-4-5", "tabelog": null, "tabelogUrl": "", "thumb": "thumbnails/389cec77590681c7a7a9d8695525ccbe.jpg" },
+    { "slug": "385cec77590681e89ac1c2c4b6c05742", "name": "ワンガーデン 西麻布店", "category": "和食", "station": "六本木駅 徒歩12分", "address": "東京都港区西麻布（番地は要確認）", "lat": 35.6600266, "lng": 139.7238075, "author": "くろ | 東京ディナー", "video": "https://www.tiktok.com/@gurume.kuro/video/7646746320618802450", "gmap": "https://www.google.com/maps/search/?api=1&query=%E3%83%AF%E3%83%B3%E3%82%AC%E3%83%BC%E3%83%87%E3%83%B3%20%E8%A5%BF%E9%BA%BB%E5%B8%83", "tabelog": 3.39, "tabelogUrl": "https://tabelog.com/tokyo/A1307/A130701/13086478/", "thumb": "thumbnails/385cec77590681e89ac1c2c4b6c05742.jpg" },
+    { "slug": "38acec775906815cb9dfe18c2067c702", "name": "焼鳥 ミツボシ", "category": "焼き鳥・居酒屋", "station": "三鷹駅 南口 徒歩約3分", "address": "東京都三鷹市下連雀3-22-5 YKソナンビルディング1F", "lat": 35.7015299, "lng": 139.5594598, "author": "みゃこメモ", "video": "https://vt.tiktok.com/ZSCL6y1oW/", "gmap": "https://www.google.com/maps/search/?api=1&query=%E7%84%BC%E9%B3%A5%20%E3%83%9F%E3%83%84%E3%83%9C%E3%82%B7%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E4%B8%89%E9%B7%B9%E5%B8%82%E4%B8%8B%E9%80%A3%E9%9B%803-22-5", "tabelog": null, "tabelogUrl": "", "thumb": "thumbnails/38acec775906815cb9dfe18c2067c702.jpg" },
+    { "slug": "385cec7759068129b4c8fe0ec202d408", "name": "オクドンシク（옥동식）", "category": "韓国料理", "station": "東新宿駅 徒歩3分／新大久保駅 徒歩13分", "address": "東京都新宿区大久保2-6-10 新宿第二アルプスマンション B1", "lat": 35.6978967, "lng": 139.7075443, "author": "新宿グルメ", "video": "https://www.tiktok.com/@shinjuku_foods/video/0", "gmap": "https://www.google.com/maps/search/?api=1&query=%E3%82%AA%E3%82%AF%E3%83%89%E3%83%B3%E3%82%B7%E3%82%AF%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%96%B0%E5%AE%BF%E5%8C%BA%E5%A4%A7%E4%B9%85%E4%BF%9D2-6-10", "tabelog": 3.42, "tabelogUrl": "https://tabelog.com/tokyo/A1304/A130401/13311223/", "thumb": "thumbnails/385cec7759068129b4c8fe0ec202d408.jpg" },
+    { "slug": "385cec77590681faa9a1cb58717be878", "name": "炭火酒場 おやどりや", "category": "焼き鳥・居酒屋", "station": "中野駅 徒歩3分", "address": "東京都中野区中野5-60-13 KMビル2F", "lat": 35.7074777, "lng": 139.6662988, "author": "気ままに東京グルメ", "video": "https://www.tiktok.com/@tokyo.gourmet/video/7640777212161019143", "gmap": "https://www.google.com/maps/search/?api=1&query=%E7%82%AD%E7%81%AB%E9%85%92%E5%A0%B4%E3%81%8A%E3%82%84%E3%81%A9%E3%82%8A%E3%82%84%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E4%B8%AD%E9%87%8E%E5%8C%BA%E4%B8%AD%E9%87%8E5-60-13", "tabelog": 3.08, "tabelogUrl": "https://tabelog.com/tokyo/A1319/A131902/13320491/", "thumb": "thumbnails/385cec77590681faa9a1cb58717be878.jpg" },
+    { "slug": "389cec7759068143b725f0f2e5ab70b7", "name": "歩路庵", "category": "寿司", "station": "広尾駅 徒歩7分", "address": "東京都渋谷区恵比寿2-5-7", "lat": 35.6464337, "lng": 139.7206342, "author": "東京上質レストラン", "video": "https://vt.tiktok.com/ZSCLMUDgp/", "gmap": "https://www.google.com/maps/search/?api=1&query=%E6%AD%A9%E8%B7%AF%E5%BA%B5%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%B8%8B%E8%B0%B7%E5%8C%BA%E6%81%B5%E6%AF%94%E5%AF%BF2-5-7", "tabelog": null, "tabelogUrl": "", "thumb": "thumbnails/389cec7759068143b725f0f2e5ab70b7.jpg" },
+    { "slug": "385cec77590681d1b2fbcf1e6d51ac08", "name": "Nico Chelsea（古民家ビストロ）", "category": "フレンチ", "station": "神楽坂", "address": "東京都新宿区神楽坂（番地は要確認）", "lat": 35.7039203, "lng": 139.7342275, "author": "もう。ええて。【グルメ】", "video": "https://www.tiktok.com/@mo_e_te_gourmet/video/7627055426722401556", "gmap": "https://www.google.com/maps/search/?api=1&query=Nico%20Chelsea%20%E7%A5%9E%E6%A5%BD%E5%9D%82", "tabelog": 3.61, "tabelogUrl": "https://tabelog.com/tokyo/A1309/A130905/13190904/", "thumb": "thumbnails/385cec77590681d1b2fbcf1e6d51ac08.jpg" },
+    { "slug": "387cec77590681bc9b0befbdcc73a7e3", "name": "MATTE Bottega del Cioccolato（麻布台ヒルズ）", "category": "カフェ・スイーツ", "station": "東京メトロ「神谷町駅」直結", "address": "東京都港区麻布台1-2-4 麻布台ヒルズ ガーデンプラザC B1F 麻布台ヒルズマーケット", "lat": 35.6614747, "lng": 139.7408267, "author": "あかねちゃんねる⋆東京おしゃれグルメ⋆", "video": "https://www.tiktok.com/@akane0726/video/7588128443984841991", "gmap": "https://www.google.com/maps/search/?api=1&query=MATTE%20Bottega%20del%20Cioccolato%20%E9%BA%BB%E5%B8%83%E5%8F%B0%E3%83%92%E3%83%AB%E3%82%BA", "tabelog": 3.54, "tabelogUrl": "https://tabelog.com/tokyo/A1307/A130701/13293823/", "thumb": "thumbnails/387cec77590681bc9b0befbdcc73a7e3.jpg" },
+    { "slug": "386cec775906812dacdcc2333f6b4cc1", "name": "焼肉 にくだらけ（西麻布）", "category": "焼肉", "station": "六本木駅 徒歩10分", "address": "東京都港区西麻布1-12-5 SW六本木通ビル 2F", "lat": 35.663315, "lng": 139.7327813, "author": "コアラ東京オシャレグルメ", "video": "https://vt.tiktok.com/ZSQE5yGqh/", "gmap": "https://www.google.com/maps/search/?api=1&query=%E7%84%BC%E8%82%89%E3%81%AB%E3%81%8F%E3%81%A0%E3%82%89%E3%81%91%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%B8%AF%E5%8C%BA%E8%A5%BF%E9%BA%BB%E5%B8%831-12-5", "tabelog": 3.5, "tabelogUrl": "https://tabelog.com/tokyo/A1307/A130701/13188204/", "thumb": "thumbnails/386cec775906812dacdcc2333f6b4cc1.jpg" },
+    { "slug": "389cec7759068111a4badba47b6d626d", "name": "ビストロ Root", "category": "フレンチ", "station": "銀座駅 徒歩3分", "address": "東京都中央区銀座5-1-16 西山興業西銀座ビル7F", "lat": 35.670113, "lng": 139.765481, "author": "everyday_gochiso", "video": "https://vt.tiktok.com/ZSCLnS9BP/", "gmap": "https://www.google.com/maps/search/?api=1&query=%E3%83%93%E3%82%B9%E3%83%88%E3%83%ADRoot%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E4%B8%AD%E5%A4%AE%E5%8C%BA%E9%8A%80%E5%BA%A75-1-16", "tabelog": null, "tabelogUrl": "", "thumb": "thumbnails/389cec7759068111a4badba47b6d626d.jpg" },
+    { "slug": "385cec7759068108997bebbf64b9b454", "name": "神田つり食堂 サクラ", "category": "和食", "station": "JR神田駅（南口）徒歩3～4分", "address": "東京都千代田区鍛冶町1-8-1 神田サクラビル 1F", "lat": 35.6944731, "lng": 139.7706981, "author": "Rio", "video": "https://www.tiktok.com/@riochi_odekake/video/7640839049015545095", "gmap": "https://www.google.com/maps/search/?api=1&query=%E7%A5%9E%E7%94%B0%E3%81%A4%E3%82%8A%E9%A3%9F%E5%A0%82%E3%82%B5%E3%82%AF%E3%83%A9%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E5%8D%83%E4%BB%A3%E7%94%B0%E5%8C%BA%E9%8D%9B%E5%86%B6%E7%94%BA1-8-1", "tabelog": 3.19, "tabelogUrl": "https://tabelog.com/tokyo/A1310/A131002/13302490/", "thumb": "thumbnails/385cec7759068108997bebbf64b9b454.jpg" },
+    { "slug": "387cec775906819f9f09e32ffc162e31", "name": "手巻き YAMAMOTO（山本海苔店 新本店内）", "category": "寿司", "station": "三越前駅 B6出口 徒歩1分", "address": "東京都中央区日本橋室町1-8-3 室町NSビル1F", "lat": 35.6851257, "lng": 139.7711284, "author": "東京グルメ", "video": "https://vt.tiktok.com/ZSQoEUq6B/", "gmap": "https://www.google.com/maps/search/?api=1&query=%E6%89%8B%E5%B7%BB%E3%81%8DYAMAMOTO%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E4%B8%AD%E5%A4%AE%E5%8C%BA%E6%97%A5%E6%9C%AC%E6%A9%8B%E5%AE%A4%E7%94%BA1-8-3", "tabelog": 3.41, "tabelogUrl": "https://tabelog.com/tokyo/A1302/A130202/13315775/", "thumb": "thumbnails/387cec775906819f9f09e32ffc162e31.jpg" },
+    { "slug": "389cec7759068170a845d254939838d1", "name": "清井商店", "category": "その他", "station": "神保町駅 徒歩3分", "address": "東京都千代田区神田神保町2-10-14 THE CITY神田神保町 1F", "lat": 35.6953703, "lng": 139.7559036, "author": "7 8 (@yaokiya_78)", "video": "https://vt.tiktok.com/ZSCNeheEy/", "gmap": "https://www.google.com/maps/search/?api=1&query=%E6%B8%85%E4%BA%95%E5%95%86%E5%BA%97%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E5%8D%83%E4%BB%A3%E7%94%B0%E5%8C%BA%E7%A5%9E%E7%94%B0%E7%A5%9E%E4%BF%9D%E7%94%BA2-10-14", "tabelog": null, "tabelogUrl": "", "thumb": "thumbnails/389cec7759068170a845d254939838d1.jpg" },
+    { "slug": "389cec77590681ba93eccdff70d04742", "name": "中目黒ないとう", "category": "和食", "station": "中目黒駅 徒歩5分", "address": "東京都目黒区上目黒3-5-20 中目黒高架下71番", "lat": 35.6441592, "lng": 139.6950848, "author": "Tomo", "video": "https://vt.tiktok.com/ZSCNeM8uD/", "gmap": "https://www.google.com/maps/search/?api=1&query=%E4%B8%AD%E7%9B%AE%E9%BB%92%E3%81%AA%E3%81%84%E3%81%A8%E3%81%86%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E7%9B%AE%E9%BB%92%E5%8C%BA%E4%B8%8A%E7%9B%AE%E9%BB%923-5-20", "tabelog": null, "tabelogUrl": "", "thumb": "thumbnails/389cec77590681ba93eccdff70d04742.jpg" },
+    { "slug": "385cec7759068109b480c8f73ce73fea", "name": "Ramen Afro Beats", "category": "ラーメン", "station": "新宿駅（詳細は要確認）", "address": "東京都新宿区（番地は要確認）", "lat": 35.6888842, "lng": 139.6987233, "author": "ぼっちのアラレちゃん", "video": "https://vt.tiktok.com/ZSQTuoQtN/", "gmap": "https://www.google.com/maps/search/?api=1&query=Ramen%20Afro%20Beats%20%E6%96%B0%E5%AE%BF", "tabelog": 3.74, "tabelogUrl": "https://tabelog.com/tokyo/A1304/A130402/13282860/", "thumb": "thumbnails/385cec7759068109b480c8f73ce73fea.jpg" }
   ]
 };
 function init(data){
@@ -200,9 +209,6 @@ function init(data){
   if(all.length) map.fitBounds(all,{padding:[40,40]});
 
   document.getElementById("search").addEventListener("input",e=>{state.q=e.target.value;render();});
-  const sure=document.getElementById("sureToggle");
-  sure.addEventListener("click",()=>{ state.sureOnly=!state.sureOnly;
-    sure.setAttribute("aria-pressed",String(state.sureOnly)); render(); });
   listEl.addEventListener("click",e=>{ const c=e.target.closest(".card"); if(!c)return;
     const it=state.items.find(i=>i.r.slug===c.dataset.slug); if(!it)return;
     map.setView([it.r.lat,it.r.lng],16,{animate:true}); it.m.openPopup();
